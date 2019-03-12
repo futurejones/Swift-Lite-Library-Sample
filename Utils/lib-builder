@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Copyright (c) FutureJones.
+# http://www.swift-lite.org
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+usage="build [--help|-h] [--version|-v] [--gpio|-g]\n
+[\e[38;5;11mUsage:\e[m lib-build ] = build library\n
+[\e[38;5;11mUsage:\e[m lib-build --gpio] = build library and link to GPIO"
+version="0.2a"
+
+declare gpio=false
+declare file=$(basename $(pwd))
+
+for i ; do
+    case "$i" in
+        --help|-h) echo -e ${usage}; exit 0 ;;
+        --version|-v) echo ${version}; exit 0 ;;
+        --gpio|-g) gpio=true;;
+        --*|-*) echo "unknown command"; exit 0 ;;
+    esac
+done
+
+# if filename not supplied at the command prompt
+# display usage message and exit
+#[ $# -eq 0 ] && { echo "Usage: build <filename>"; exit 1; }
+
+# if file not found, display an error and exit
+[ ! -d "Source" ] && { echo "ERROR: Source directory not found."; exit 2; }
+
+if [[ -d "Source" && -n "$(ls -A "Source")" ]]; then
+    echo "Building $file library..."
+    if [[ "$gpio" = true ]]
+    then
+        addGPIO="-I /usr/lib/ -L /usr/lib/ -lGPIO"
+    fi
+    swiftc -emit-library -emit-module -parse-as-library -module-name $file Source/*.swift $addGPIO
+    rm -rf lib$file && mkdir -p lib$file/usr/lib && mkdir -p lib$file/DEBIAN
+    mv lib$file.so $file.swiftdoc $file.swiftmodule lib$file/usr/lib
+else
+  echo "Error: no source files"
+fi
+# fullname="USER INPUT"
+read -p "Enter package name: " pkname
+# user="USER INPUT"
+read -p "Enter version number: " pkversion
+echo $pkname $pkversion
+arch=`uname -m`
+cat <<EOT > control
+Package: $pkname
+Version: $pkversion
+Architecture: all
+Priority: optional
+Maintainer: Neil Jones neil@swift-arm.com
+Homepage: http://www.swift-lite.org
+Description: swift-lite library for Swift.
+EOT
+# input into control file and save to Debian dir
+mv control lib$file/DEBIAN
+# build deb package
+dpkg-deb -b lib$file
+# end
