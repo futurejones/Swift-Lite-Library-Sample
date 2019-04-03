@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#
 # Copyright (c) FutureJones.
 # http://www.swift-lite.org
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,48 +13,81 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Provides a solution for 3 use cases
+# 1 - Create library from single existing module.swift file [$ lib-builder <module>.swift --make-library] >> module.deb package
+# 2 - Initialize library folder with Source directory and main.swift [$ lib-builder <NAME> --init-library] >> <NAME> directory containing Source/main.swift
+# 3 - Create library and .deb install package from library Source directory [$ lib-builder --make-library] >> <NAME>.deb package
+#
 
-usage="build [--help|-h] [--version|-v] [--gpio|-g]\n
-[\e[38;5;11mUsage:\e[m lib-build ] = build library\n
-[\e[38;5;11mUsage:\e[m lib-build --gpio] = build library and link to GPIO"
-version="0.2a"
+usage="\n
+ ______________________ Swift Lite Library Builder ____________________________\n
+ \n
+ lib-builder [\e[32;11m--help\e[m|\e[32;11m-h\e[m] \e[32;11m// opens help\e[m \n
+ Example: $ lib-builder --help | $ lib-builder -h\n\n
+ \e[94;11m~~~~~~~~~~~~~~~~\e[m\n
+ \n
+ \e[91;11mTo\e[m create a Library with \e[91;11mmultiple\e[m source files first use [\e[32;11m--init-library\e[m|\e[32;11m-i\e[m]\n\n
+ lib-builder <NAME> [\e[32;11m--init-library\e[m|\e[32;11m-i\e[m] \e[32;11m// creates new a Library directory structure and Source file.\e[m \n
+ Example: $ lib-builder NewLib --init-library | $ lib-builder NewLib -i\n
+ \n
+ \n
+ \e[91;11mTo\e[m build a Library with \e[91;11mmultiple\e[m source files use [\e[32;11m--make-library\e[m|\e[32;11m-m\e[m] from within the Library directory.\n\n
+ lib-builder [\e[32;11m--make-library\e[m|\e[32;11m-m\e[m] \e[32;11m// builds a Library from the Source files. The name of the library is taken from the library directory name.\e[m \n
+ Example: $ lib-builder --make-library | $ lib-builder -m\n
+ \n
+ lib-builder [\e[32;11m--make-library-gpio\e[m|\e[32;11m-mg\e[m] \e[32;11m// builds a Library from the Source files and \e[91;11mlinks to the GPIO\e[m \e[32;11mlibrary.\e[m \n
+ Example: $ lib-builder --make-library-gpio | $ lib-builder -mg\n
+ \n
+ \e[94;11m~~~~~~~~~~~~~~~~\e[m\n
+ \n
+ \e[91;11mTo\e[m create and build a Library from a \e[91;11msingle\e[m source file.\n\n
+ lib-builder <FILE.swift> [\e[32;11m--make-library\e[m|\e[32;11m-m\e[m] \e[32;11m// creates and builds a new Library install package from a single .swift file. The name of the library is taken from the file name\e[m \n
+ Example: $ lib-builder MyLib.swift --make-library | $ lib-builder MyLib.swift -m\n\n
+ lib-builder <FILE.swift> [\e[32;11m--make-library-gpio\e[m|\e[32;11m-mg\e[m] \e[32;11m// creates and builds a new Library install package from a single .swift file and \e[91;11mlinks to the GPIO\e[m \e[32;11mlibrary.\e[m \n
+ Example: $ lib-builder MyLib.swift --make-library-gpio | $ lib-builder MyLib.swift -mg
+ \n
+ \n
+ \e[94;11m~~~~~~~~~~~~~~~~\e[m\n
+ \n
+ A note about\e[91;11m naming\e[m your Library\n\n
+ A library has \e[91;11m2\e[m names. \n
+ The first is the library \e[91;11m'import'\e[m name. e.g \e[91;11m'GPIO'\e[m This is the name that you will use in your code e.g. \e[91;11m'import GPIO'\e[m.\n
+ The import name starts with an uppercase letter and is taken from the library directory name or the file name in a single file build.\n
+ It is important to note that in the case of a single file build, the filename should start with an uppercase letter.\n
+ \n
+ The second is the \e[91;11m'package'\e[m name. The \e[91;11mpackage\e[m name is the internal name of the \e[91;11m.deb\e[m package file.\n
+ This is the name used when installing the package e.g. \e[91;11m'sudo apt-get install gpio'\e[m.\n
+ You will be asked to enter this name in the final stage of the build process. The name should be simple and in all lowercase.\n
+ Make sure you don't choose a name that is already being used by other package installed on your system.\n
+_______________________________________________________________________________\n
+"
+
+version="0.1a"
+set -e
 
 declare gpio=false
-declare file=$(basename $(pwd))
+declare file=$1
+declare dirName=$(basename $(pwd))
 
-for i ; do
-    case "$i" in
-        --help|-h) echo -e ${usage}; exit 0 ;;
-        --version|-v) echo ${version}; exit 0 ;;
-        --gpio|-g) gpio=true;;
-        --*|-*) echo "unknown command"; exit 0 ;;
-    esac
-done
+function help { echo -e ${usage} ; }
+function version { echo -e ${version} ; }
 
-# if filename not supplied at the command prompt
-# display usage message and exit
-#[ $# -eq 0 ] && { echo "Usage: build <filename>"; exit 1; }
+function init {
+    echo "creating $file library source files..."
+    mkdir -p $file/Source/
+    touch $file/Source/main.swift
+    echo "$file ready."
+}
 
-# if file not found, display an error and exit
-[ ! -d "Source" ] && { echo "ERROR: Source directory not found."; exit 2; }
-
-if [[ -d "Source" && -n "$(ls -A "Source")" ]]; then
-    echo "Building $file library..."
-    if [[ "$gpio" = true ]]
-    then
-        addGPIO="-I /usr/lib/ -L /usr/lib/ -lGPIO"
-    fi
-    swiftc -emit-library -emit-module -parse-as-library -module-name $file Source/*.swift $addGPIO
-    rm -rf lib$file && mkdir -p lib$file/usr/lib && mkdir -p lib$file/DEBIAN
-    mv lib$file.so $file.swiftdoc $file.swiftmodule lib$file/usr/lib
-else
-  echo "Error: no source files"
-fi
-# fullname="USER INPUT"
+function buildDeb {
+# name="USER INPUT"
 read -p "Enter package name: " pkname
-# user="USER INPUT"
+# version="USER INPUT"
 read -p "Enter version number: " pkversion
-echo $pkname $pkversion
+# description="USER INPUT"
+read -p "Enter description: " pkdescription
+# echo $pkname $pkversion
 arch=`uname -m`
 cat <<EOT > control
 Package: $pkname
@@ -63,10 +96,74 @@ Architecture: all
 Priority: optional
 Maintainer: Neil Jones neil@swift-arm.com
 Homepage: http://www.swift-lite.org
-Description: swift-lite library for Swift.
+Description: $pkdescription
 EOT
 # input into control file and save to Debian dir
-mv control lib$file/DEBIAN
+mv control lib$dirName/DEBIAN
 # build deb package
-dpkg-deb -b lib$file
+dpkg-deb -b lib$dirName
+}
+
+function make {
+    # check if $file is a swift file
+    if [[ "${file##*.}" = "swift" ]]
+    then
+        # if file not found, display an error and exit
+        [ ! -f "$file" ] && { echo "ERROR: $_file file not found."; exit 2; }
+        # echo "make from file"
+        filename=${file%".swift"}
+        # echo "library name = $filename"
+        dirName=$filename
+        makeFromFile
+    else
+        # echo "make from dir"
+        makeFromDir
+    fi
+}
+
+function makeFromDir {
+    if [[ -d "Source" && -n "$(ls -A "Source")" ]]
+    then
+        echo "Building $dirName library..."
+        if [[ "$gpio" = true ]]
+        then
+            addGPIO="-I /usr/lib/ -L /usr/lib/ -lGPIO"
+        fi
+        swiftc -emit-library -emit-module -parse-as-library -module-name $dirName Source/*.swift $addGPIO
+        rm -rf lib$dirName && mkdir -p lib$dirName/usr/lib && mkdir -p lib$dirName/DEBIAN
+        mv lib$dirName.so $dirName.swiftdoc $dirName.swiftmodule lib$dirName/usr/lib
+        buildDeb
+    else
+        echo "ERROR: no source files"
+        exit 0
+    fi
+}
+
+function makeFromFile {
+    echo "Building $filename library..."
+    if [[ "$gpio" = true ]]
+    then
+        addGPIO="-I /usr/lib/ -L /usr/lib/ -lGPIO"
+    fi
+    swiftc -emit-library -emit-module -parse-as-library -module-name $filename $file $addGPIO
+    rm -rf lib$filename && mkdir -p lib$filename/usr/lib && mkdir -p lib$filename/DEBIAN
+    mv lib$filename.so $filename.swiftdoc $filename.swiftmodule lib$filename/usr/lib
+    buildDeb
+    rm -rf lib$filename
+    exit 0
+}
+
+
+
+for i ; do
+    case "$i" in
+        --help|-h) help; exit 0 ;;
+        --version|-v) version; exit 0 ;;
+        --init-library|-i) init; exit 0 ;;
+        --make-library|-m) make; exit 0 ;;
+        --make-library-gpio|-mg) gpio=true; make; exit 0 ;;
+        --*|-*) echo "unknown command"; exit 0 ;;
+    esac
+done
+echo "unknown command $i: try lib-builder --help"
 # end
